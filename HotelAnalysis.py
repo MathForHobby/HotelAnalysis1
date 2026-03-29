@@ -151,8 +151,8 @@ if uploaded_file:
                 st.bar_chart(gap_df[[target_a, target_b]])
                 st.table(gap_df.sort_values(by='Gap', ascending=False))
 
-                pdf_data = create_pdf(target_a, target_b, score, gap_df.sort_values(by='Gap', ascending=False))
-                st.download_button("📄 PDF 리포트 다운로드", data=pdf_data, file_name="hotel_analysis.pdf")
+                # pdf_data = create_pdf(target_a, target_b, score, gap_df.sort_values(by='Gap', ascending=False))
+                # st.download_button("📄 PDF 리포트 다운로드", data=pdf_data, file_name="hotel_analysis.pdf")
 
         with tab2:
             if len(h_list) >= 2:
