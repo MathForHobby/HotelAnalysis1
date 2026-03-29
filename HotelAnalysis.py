@@ -10,9 +10,9 @@ from fpdf import FPDF
 st.set_page_config(page_title="Hotel Similarity Analyzer Pro", layout="wide")
 
 st.title("🏨 호텔 가치 유사도 및 시장 분석 시스템")
-st.markdown("최종 수정: **막대그래프 툴팁 최적화** 및 기존 로직 완벽 보존")
+st.markdown("최종 수정: **그래프 렌더링 오류(Index KeyError) 해결** 및 전체 로직 최적화")
 
-# --- 1. 데이터 전처리 함수 (기존 로직 동일) ---
+# --- 1. 데이터 전처리 함수 (기존 로직 유지) ---
 def preprocess_data(df):
     df_proc = df.copy()
     df_proc = df_proc.apply(lambda x: x.str.strip() if x.dtype == "object" else x).fillna('없음')
@@ -57,7 +57,7 @@ def preprocess_data(df):
 
     return df_proc
 
-# --- 2. PDF 생성 함수 (기존 로직 동일) ---
+# --- 2. PDF 생성 함수 ---
 def create_pdf(hotel_a, hotel_b, score, gap_df):
     pdf = FPDF()
     pdf.add_page()
@@ -120,33 +120,28 @@ if uploaded_file:
                 st.metric("가치 유사도 점수", f"{score:.4f}")
                 st.progress(float(np.clip(score, 0, 1)))
                 
-                # --- 차트 데이터 준비 및 툴팁 수정 로직 ---
+                # --- 차트 데이터 준비 (Melt 에러 방지 버전) ---
                 gap_df = pd.DataFrame({target_a: df_norm.loc[target_a], target_b: df_norm.loc[target_b]})
                 gap_df['Gap'] = (gap_df[target_a] - gap_df[target_b]).abs()
                 
                 st.write("#### 📊 특성별 벡터 점수 비교 (0~1)")
                 
-                # 데이터를 Plotly용으로 재구조화 (Melt)
-                chart_data = gap_df[[target_a, target_b]].reset_index().melt(id_vars='index')
-                chart_data.columns = ['특성', '호텔명', '점수']
+                # 🛠️ 수정 포인트: reset_index() 후 이름을 명시적으로 지정하여 id_vars 에러 방지
+                chart_prep = gap_df[[target_a, target_b]].reset_index()
+                chart_prep.columns = ['특성', target_a, target_b] # 컬럼명을 강제로 고정
                 
-                # Plotly 막대그래프 생성 (툴팁 교정)
+                chart_data = chart_prep.melt(id_vars='특성', var_name='호텔명', value_name='점수')
+                
+                # Plotly 막대그래프
                 fig_bar = px.bar(chart_data, 
                                  x='특성', 
                                  y='점수', 
                                  color='호텔명', 
                                  barmode='group',
-                                 # 호텔명과 점수만 툴팁에 표시되도록 설정
                                  hover_data={'특성': False, '호텔명': True, '점수': ':.4f'},
                                  height=450)
                 
-                fig_bar.update_layout(
-                    xaxis_title=None,
-                    yaxis_title="정규화 점수",
-                    legend_title=None,
-                    margin=dict(l=20, r=20, t=20, b=20)
-                )
-                
+                fig_bar.update_layout(xaxis_title=None, yaxis_title="정규화 점수", legend_title=None, margin=dict(l=20, r=20, t=20, b=20))
                 st.plotly_chart(fig_bar, use_container_width=True)
                 
                 st.write("#### 상세 데이터 분석 테이블")
@@ -161,16 +156,10 @@ if uploaded_file:
                 pca = PCA(n_components=2)
                 pca_res = pca.fit_transform(df_norm)
                 pca_df = pd.DataFrame(pca_res, columns=['x', 'y'], index=df_norm.index).reset_index()
+                pca_df.columns = ['호텔명', 'x', 'y']
                 
-                # Plotly 2D 산점도 (정사각 평면 고정)
                 fig = px.scatter(pca_df, x='x', y='y', text='호텔명', labels={'x': 'PC1', 'y': 'PC2'})
-                fig.update_layout(
-                    xaxis=dict(range=[-1.5, 1.5]),
-                    yaxis=dict(range=[-1.5, 1.5]),
-                    yaxis_scaleanchor="x", 
-                    width=700, height=700,
-                    showlegend=False
-                )
+                fig.update_layout(xaxis=dict(range=[-1.5, 1.5]), yaxis=dict(range=[-1.5, 1.5]), yaxis_scaleanchor="x", width=700, height=700, showlegend=False)
                 fig.update_traces(textposition='top center')
                 st.plotly_chart(fig, use_container_width=False)
             else:
