@@ -147,8 +147,9 @@ if uploaded_file:
                 st.write("#### 상세 데이터 분석 테이블")
                 st.table(gap_df.sort_values(by='Gap', ascending=False))
 
-                pdf_data = create_pdf(target_a, target_b, score, gap_df.sort_values(by='Gap', ascending=False))
-                st.download_button("📄 PDF 리포트 다운로드 (ENG)", data=pdf_data, file_name="hotel_analysis.pdf")
+                # PDF Creation Button is unnecessary
+                # pdf_data = create_pdf(target_a, target_b, score, gap_df.sort_values(by='Gap', ascending=False))
+                # st.download_button("📄 PDF 리포트 다운로드 (ENG)", data=pdf_data, file_name="hotel_analysis.pdf")
 
         with tab2:
             st.subheader("📍 호텔 시장 포지셔닝 맵 (PCA)")
