@@ -25,7 +25,7 @@ def preprocess_data(df):
             df_proc[col] = df_proc[col].map({'있음': 1, '없음': 0}).fillna(0)
 
     # [2] 3단계 변환 (없음: 0, 유료: 0.5, 무료: 1)
-    tier_cols = ['세탁실', '주차장(유료/무료/없음)']
+    tier_cols = ['세탁실', '주차장']
     for col in tier_cols:
         if col in df_proc.columns:
             df_proc[col] = df_proc[col].map({'없음': 0, '유료': 0.5, '무료': 1}).fillna(0)
