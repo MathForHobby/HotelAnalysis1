@@ -6,15 +6,16 @@ from datetime import datetime
 # --- 0. 페이지 설정 ---
 st.set_page_config(page_title="Hotel Similarity Analyzer", layout="wide")
 
-st.title("🏨 호텔 가치 유사도 분석 시스템 (v2.0)")
-st.markdown("수치화 기준: **운영시기(YYYY.MM)** 기반 신규성(Newness) 자동 계산 포함")
+st.title("🏨 호텔 가치 유사도 분석 시스템 (v2.1)")
+st.markdown("수정 반영: **주차장** 컬럼명 간소화 및 **빈 데이터(결측치) 0점 처리** 로직 적용")
 
 # --- 1. 데이터 전처리 함수 ---
 def preprocess_data(df):
-    df_proc = df.copy()
-    current_date = datetime.now() # 실행 시점의 날짜 (예: 2026년 3월)
+    # 전처리 전 모든 결측치를 '없음' 문자열로 채움 (빈 칸 에러 방지)
+    df_proc = df.copy().fillna('없음')
+    current_date = datetime.now() 
 
-    # [1] 단순 이진 변환 (있음: 1, 없음: 0)
+    # [1] 단순 이진 변환 (있음: 1, 없음/빈칸: 0)
     binary_cols = [
         '브랜드', '헬스장', '수영장', '사우나', '욕장', '카페', 
         '비즈니스 센터', '미팅룸', '연회장', '라운지', 
@@ -22,9 +23,11 @@ def preprocess_data(df):
     ]
     for col in binary_cols:
         if col in df_proc.columns:
+            # 매핑되지 않는 값이나 빈 값은 모두 0으로 처리
             df_proc[col] = df_proc[col].map({'있음': 1, '없음': 0}).fillna(0)
 
     # [2] 3단계 변환 (없음: 0, 유료: 0.5, 무료: 1)
+    # 컬럼명을 '주차장'으로 변경하여 반영
     tier_cols = ['세탁실', '주차장']
     for col in tier_cols:
         if col in df_proc.columns:
@@ -45,38 +48,36 @@ def preprocess_data(df):
     if '운영시기' in df_proc.columns:
         def calculate_months(date_str):
             try:
-                # 2024.03 형식을 datetime 객체로 변환
+                # '없음'이거나 날짜 형식이 아니면 아주 오래된 것으로 간주하거나 0 처리
+                if date_str == '없음': return 9999 
                 past_date = datetime.strptime(str(date_str), "%Y.%m")
-                # 총 운영 개월 수 계산
                 return (current_date.year - past_date.year) * 12 + (current_date.month - past_date.month)
             except:
-                return 0
+                return 9999 # 에러 발생 시 최하점 처리를 위해 큰 값 반환
 
-        # 개별 호텔의 운영 개월 수 계산
         df_proc['운영개월수'] = df_proc['운영시기'].apply(calculate_months)
         max_months = df_proc['운영개월수'].max()
         
         if max_months > 0:
-            # 질문자님 공식: (최대 운영개월 - 현재 운영개월) / 최대 운영개월
-            # 신규 호텔일수록 1에 수렴함
+            # (최대 운영개월 - 내 운영개월) / 최대 운영개월
             df_proc['운영시기_점수'] = (max_months - df_proc['운영개월수']) / max_months
         else:
-            df_proc['운영시기_점수'] = 1.0
+            df_proc['운영시기_점수'] = 0.0
         
-        # 원본 컬럼 및 중간 계산 컬럼 제거 후 점수 컬럼만 남김
         df_proc = df_proc.drop(columns=['운영시기', '운영개월수'])
         df_proc = df_proc.rename(columns={'운영시기_점수': '운영시기'})
 
-    # [6] 위치 (사용자 입력값 그대로 사용)
+    # [6] 위치 (숫자 데이터, 빈 칸은 0)
     if '위치' in df_proc.columns:
         df_proc['위치'] = pd.to_numeric(df_proc['위치'], errors='coerce').fillna(0)
 
     return df_proc
 
-# --- 2. 메인 UI (사이드바 및 파일 로드) ---
+# --- 2. 메인 UI ---
 uploaded_file = st.sidebar.file_uploader("호텔 특성 파일(.csv)을 업로드하세요", type=["csv"])
 
 if uploaded_file is not None:
+    # CSV 로드 시 빈 값을 처리하기 쉽게 로드
     df_raw = pd.read_csv(uploaded_file)
     
     st.subheader("📋 입력된 원본 데이터")
@@ -85,7 +86,7 @@ if uploaded_file is not None:
     if '호텔명' not in df_raw.columns:
         st.error("CSV 파일에 '호텔명' 컬럼이 포함되어야 합니다.")
     else:
-        # 전처리 및 수치화
+        # 전처리 수행
         df_numeric = preprocess_data(df_raw)
         df_numeric.set_index('호텔명', inplace=True)
 
@@ -115,23 +116,24 @@ if uploaded_file is not None:
             st.success(f"### 두 호텔의 가치 유사도: **{similarity:.4f}**")
             st.progress(float(similarity))
             
-            # 시각화 데이터 준비
+            # 비교 테이블 및 차트
             comparison_df = pd.DataFrame({
                 target_a: df_norm.loc[target_a],
                 target_b: df_norm.loc[target_b]
             })
             comparison_df['Gap'] = (comparison_df[target_a] - comparison_df[target_b]).abs()
             
-            st.write("#### 📊 특성별 벡터 점수 비교 (0~1 사이 정규화된 값)")
+            st.write("#### 📊 특성별 벡터 점수 비교 (0~1)")
             st.bar_chart(comparison_df[[target_a, target_b]])
             
-            st.write("#### 상세 데이터 비교 리스트")
+            st.write("#### 상세 데이터 분석 테이블")
             st.table(comparison_df.sort_values(by='Gap', ascending=False))
 
 else:
     st.info("왼쪽 사이드바에서 분석할 호텔 데이터를 업로드해 주세요.")
     with st.expander("CSV 파일 작성 가이드"):
         st.write("""
-        - **운영시기** 컬럼: '2024.03' 또는 '2010.12'와 같은 형식으로 입력하세요.
-        - **기타 텍스트**: '있음', '없음', '무료', '유료'로 입력하면 자동으로 수치화됩니다.
+        - **주차장**: '무료', '유료', '없음' 혹은 빈칸으로 입력하세요.
+        - **빈칸 처리**: 데이터를 입력하지 않은 칸은 자동으로 '없음' 혹은 '0점' 처리됩니다.
+        - **운영시기**: '2024.03' 형식으로 입력하세요.
         """)
